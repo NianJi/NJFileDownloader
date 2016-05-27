@@ -2,8 +2,8 @@
 //  AppDelegate.h
 //  NJFileDownloader-ios
 //
-//  Created by 念纪 on 16/5/18.
-//  Copyright © 2016年 nianji. All rights reserved.
+//  Created by Luke on 16/5/18.
+//  Copyright © 2016年 Luke. All rights reserved.
 //
 
 #import <UIKit/UIKit.h>
