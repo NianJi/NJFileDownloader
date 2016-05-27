@@ -182,9 +182,10 @@ static void url_session_manager_create_task_safely(dispatch_block_t block) {
         }
         
         if (info.completionHandler) {
-            dispatch_async(dispatch_get_main_queue(), ^{
+            NSOperationQueue *callbackQueue = self.callbackQueue ?: [NSOperationQueue mainQueue];
+            [callbackQueue addOperationWithBlock:^{
                 info.completionHandler(error);
-            });
+            }];
         }
         [_mapTable removeObjectForKey:obj];
     }
@@ -211,9 +212,10 @@ static void url_session_manager_create_task_safely(dispatch_block_t block) {
     info.totalBytesExpectedToWrite = totalBytesExpectedToWrite;
     
     if (info.progressHandler) {
-        dispatch_async(dispatch_get_main_queue(), ^{
+        NSOperationQueue *callbackQueue = self.callbackQueue ?: [NSOperationQueue mainQueue];
+        [callbackQueue addOperationWithBlock:^{
             info.progressHandler(info);
-        });
+        }];
     }
 }
 

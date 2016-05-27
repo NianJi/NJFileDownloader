@@ -20,6 +20,8 @@
 
 @interface NJFileDownloader : NSObject
 
+@property (nonatomic, strong) NSOperationQueue *callbackQueue;  //default is main queue
+
 - (id<NJFileDownloaderTask>)downloadRequest:(NSURLRequest *)request
                                      toPath:(NSString *)resultPath
                                  completion:(void(^)(NSError *error))completionHandler;
