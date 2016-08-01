@@ -8,6 +8,7 @@
 
 #import "NJFileDownloader.h"
 
+
 // learn from AFNetworking
 #ifndef NSFoundationVersionNumber_iOS_8_0
 #define NSFoundationVersionNumber_With_Fixed_5871104061079552_bug 1140.11
@@ -36,6 +37,7 @@ static void url_session_manager_create_task_safely(dispatch_block_t block) {
     }
 }
 
+typedef void (^NJFileResumeCancelHandler)(NSData *resumeData);
 
 @interface NJFileDownloaderTask : NSObject <NJFileDownloaderTask>
 
@@ -47,10 +49,13 @@ static void url_session_manager_create_task_safely(dispatch_block_t block) {
 @property (nonatomic, copy) void (^progressHandler)(id<NJFileDownloaderTask>);
 @property (nonatomic, copy) void (^pauseHandler)();
 @property (nonatomic, copy) void (^cancelHandler)();
+@property (nonatomic, copy) void (^cancelByProducingResumeDataHandler)(NJFileResumeCancelHandler completionHandler);
 @property (nonatomic, copy) void (^resumeHandler)();
 
 @property (nonatomic, assign) int64_t totalBytesWritten;
 @property (nonatomic, assign) int64_t totalBytesExpectedToWrite;
+
+@property (nonatomic, strong) NSDictionary *userInfo;
 
 @end
 
@@ -77,6 +82,13 @@ static void url_session_manager_create_task_safely(dispatch_block_t block) {
     }
 }
 
+- (void)cancelByProducingResumeData:(void (^)(NSData *))completionHandler
+{
+    if (self.cancelByProducingResumeDataHandler) {
+        self.cancelByProducingResumeDataHandler(completionHandler);
+    }
+}
+
 - (double)fractionCompleted
 {
     if (self.totalBytesExpectedToWrite == 0) {
@@ -97,6 +109,7 @@ static void url_session_manager_create_task_safely(dispatch_block_t block) {
 @implementation NJFileDownloader
 {
     NSURLSession *_downloadSession;
+    NSURLSessionConfiguration *_sessionConfiguration;
     NSOperationQueue *_delegateQueue;
     NSMapTable *_mapTable;
 }
@@ -108,11 +121,22 @@ static void url_session_manager_create_task_safely(dispatch_block_t block) {
         _delegateQueue = [[NSOperationQueue alloc] init];
         _delegateQueue.maxConcurrentOperationCount = 1; //serial
         _mapTable = [[NSMapTable alloc] initWithKeyOptions:NSPointerFunctionsStrongMemory valueOptions:NSPointerFunctionsStrongMemory capacity:1];
-        _downloadSession = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration defaultSessionConfiguration]
+        _sessionConfiguration = [NSURLSessionConfiguration defaultSessionConfiguration];
+        _downloadSession = [NSURLSession sessionWithConfiguration:_sessionConfiguration
                                                          delegate:self
                                                     delegateQueue:_delegateQueue];
     }
     return self;
+}
+
+- (void)setAllowsCellularAccess:(BOOL)allowsCellularAccess
+{
+    _sessionConfiguration.allowsCellularAccess = allowsCellularAccess;
+}
+
+- (BOOL)allowsCellularAccess
+{
+    return _sessionConfiguration.allowsCellularAccess;
 }
 
 - (id<NJFileDownloaderTask>)downloadRequest:(NSURLRequest *)request toPath:(NSString *)resultPath completion:(void (^)(NSError *))completionHandler
@@ -122,15 +146,34 @@ static void url_session_manager_create_task_safely(dispatch_block_t block) {
 
 - (id<NJFileDownloaderTask>)downloadRequest:(NSURLRequest *)request toPath:(NSString *)resultPath progress:(void (^)(id<NJFileDownloaderTask>))downloadProgressHandler completion:(void (^)(NSError *))completionHandler
 {
-    NJFileDownloaderTask *info = [[NJFileDownloaderTask alloc] init];
-    info.resultPath = resultPath;
-    info.completionHandler = completionHandler;
-    info.progressHandler = downloadProgressHandler;
-    
     __block NSURLSessionDownloadTask *downloadTask = nil;
     url_session_manager_create_task_safely(^{
         downloadTask = [_downloadSession downloadTaskWithRequest:request];
     });
+   
+    return [self runSessionTask:downloadTask toPath:resultPath progress:downloadProgressHandler completion:completionHandler];
+}
+
+
+- (id<NJFileDownloaderTask>)downloadWithResumeData:(NSData *)resumeData
+                                            toPath:(NSString *)resultPath
+                                          progress:(void (^)(id<NJFileDownloaderTask> downloadTask))downloadProgressHandler
+                                        completion:(void(^)(NSError *error))completionHandler
+{
+    __block NSURLSessionDownloadTask *downloadTask = nil;
+    url_session_manager_create_task_safely(^{
+        downloadTask = [_downloadSession downloadTaskWithResumeData:resumeData];
+    });
+    
+    return [self runSessionTask:downloadTask toPath:resultPath progress:downloadProgressHandler completion:completionHandler];
+}
+
+- (id<NJFileDownloaderTask>)runSessionTask:(NSURLSessionTask *)downloadTask toPath:(NSString *)resultPath progress:(void (^)(id<NJFileDownloaderTask>))downloadProgressHandler completion:(void (^)(NSError *))completionHandler
+{
+    NJFileDownloaderTask *info = [[NJFileDownloaderTask alloc] init];
+    info.resultPath = resultPath;
+    info.completionHandler = completionHandler;
+    info.progressHandler = downloadProgressHandler;
     
     __weak typeof(downloadTask) weakTask = downloadTask;
     info.resumeHandler = ^{
@@ -224,6 +267,11 @@ static void url_session_manager_create_task_safely(dispatch_block_t block) {
     didCompleteWithError:(NSError *)error
 {
     [self completeDownloadForRequestObject:task withError:error];
+}
+
++ (NSData *)getResumeData:(NSError *)error
+{
+    return [[error userInfo] objectForKey:NSURLSessionDownloadTaskResumeData];
 }
 
 @end
