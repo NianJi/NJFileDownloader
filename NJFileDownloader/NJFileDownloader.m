@@ -208,6 +208,19 @@ typedef void (^NJFileResumeCancelHandler)(NSData *resumeData);
 - (void)didDownloadFileForInfo:(NJFileDownloaderTask *)info fileURL:(NSURL *)location
 {
     info.downloadFileURL = location;
+    
+    // get file size
+    uint64_t fileSize = [[[NSFileManager defaultManager] attributesOfItemAtPath:[location path] error:nil] fileSize];
+    if (fileSize > 0) {
+        NSURL *resultUrl = [NSURL fileURLWithPath:info.resultPath];
+        [[NSFileManager defaultManager] removeItemAtURL:resultUrl error:NULL];
+        NSError *error = nil;
+        [[NSFileManager defaultManager] moveItemAtURL:info.downloadFileURL toURL:resultUrl error:&error];
+        info.error = error;
+    } else {
+        info.error = [NSError errorWithDomain:@"NJFileDownloaderError" code:0 userInfo:@{NSLocalizedDescriptionKey: @"Download a zero size file"}];
+    }
+    
     NSURL *resultUrl = [NSURL fileURLWithPath:info.resultPath];
     [[NSFileManager defaultManager] removeItemAtURL:resultUrl error:NULL];
     NSError *error = nil;
