@@ -23,7 +23,7 @@
     // Override point for customization after application launch.
     
     _fileDownloader = [[NJFileDownloader alloc] init];
-    [_fileDownloader downloadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"http://photocdn.sohu.com/20160526/Img451500724.jpg"]] toPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Img451500724.jpg"] completion:^(NSError *error) {
+    [_fileDownloader downloadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"http://photocdn.sohu.com/20160526/Img451500724.jpg"]] toPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Img451500724.jpg"] completion:^(NSError *error) {
         
         if (error) {
             NSLog(@"%@", error);
