@@ -124,7 +124,7 @@
 				TargetAttributes = {
 					A37D14781CEC8E30007E73C5 = {
 						CreatedOnToolsVersion = 7.3.1;
-						DevelopmentTeam = N44L3X6FN9;
+						DevelopmentTeam = 8JWVBB5S2P;
 					};
 				};
 			};
@@ -281,9 +281,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				DEVELOPMENT_TEAM = 8JWVBB5S2P;
 				INFOPLIST_FILE = "NJFileDownloader-ios/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = "com.Luke.NJFileDownloader-ios";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.Luke.NJFileDownloader-ios.1";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Debug;
@@ -292,9 +293,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				DEVELOPMENT_TEAM = 8JWVBB5S2P;
 				INFOPLIST_FILE = "NJFileDownloader-ios/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = "com.Luke.NJFileDownloader-ios";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.Luke.NJFileDownloader-ios.1";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;

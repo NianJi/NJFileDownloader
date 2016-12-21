@@ -20,7 +20,7 @@ static dispatch_queue_t url_session_manager_creation_queue() {
     static dispatch_queue_t af_url_session_manager_creation_queue;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        af_url_session_manager_creation_queue = dispatch_queue_create("com.alamofire.networking.session.manager.creation", DISPATCH_QUEUE_SERIAL);
+        af_url_session_manager_creation_queue = dispatch_queue_create("com.nianji.NJFileDownloader.sessionCreateQueue", DISPATCH_QUEUE_SERIAL);
     });
     
     return af_url_session_manager_creation_queue;
@@ -35,6 +35,21 @@ static void url_session_manager_create_task_safely(dispatch_block_t block) {
     } else {
         block();
     }
+}
+
+static NSOperationQueue *nj_file_downloader_shared_delegate_queue()
+{
+    static NSOperationQueue *_delegateQueue;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _delegateQueue = [[NSOperationQueue alloc] init];
+        if ([_delegateQueue respondsToSelector:@selector(setName:)]) {
+            _delegateQueue.name = @"com.nianji.NJFileDownloader.delegateQueue";
+        }
+        _delegateQueue.maxConcurrentOperationCount = 1;
+    });
+    
+    return _delegateQueue;
 }
 
 typedef void (^NJFileResumeCancelHandler)(NSData *resumeData);
@@ -109,34 +124,61 @@ typedef void (^NJFileResumeCancelHandler)(NSData *resumeData);
 @implementation NJFileDownloader
 {
     NSURLSession *_downloadSession;
-    NSURLSessionConfiguration *_sessionConfiguration;
-    NSOperationQueue *_delegateQueue;
+    NSURLSession *_downloadSessionWifiOnly;
+
     NSMapTable *_mapTable;
+}
+
+- (void)dealloc
+{
+    if (_downloadSession) {
+        [_downloadSession invalidateAndCancel];
+    }
+    if (_downloadSessionWifiOnly) {
+        [_downloadSessionWifiOnly invalidateAndCancel];
+    }
 }
 
 - (instancetype)init
 {
     self = [super init];
     if (self) {
-        _delegateQueue = [[NSOperationQueue alloc] init];
-        _delegateQueue.maxConcurrentOperationCount = 1; //serial
+        _allowsCellularAccess = YES;
         _mapTable = [[NSMapTable alloc] initWithKeyOptions:NSPointerFunctionsStrongMemory valueOptions:NSPointerFunctionsStrongMemory capacity:1];
-        _sessionConfiguration = [NSURLSessionConfiguration defaultSessionConfiguration];
-        _downloadSession = [NSURLSession sessionWithConfiguration:_sessionConfiguration
-                                                         delegate:self
-                                                    delegateQueue:_delegateQueue];
     }
     return self;
 }
 
-- (void)setAllowsCellularAccess:(BOOL)allowsCellularAccess
+- (NSURLSession *)downloadSessionAllNet
 {
-    _sessionConfiguration.allowsCellularAccess = allowsCellularAccess;
+    if (!_downloadSession) {
+        NSURLSessionConfiguration *sessionConfiguration = [NSURLSessionConfiguration defaultSessionConfiguration];
+        _downloadSession = [NSURLSession sessionWithConfiguration:sessionConfiguration
+                                                         delegate:self
+                                                    delegateQueue:nj_file_downloader_shared_delegate_queue()];
+    }
+    return _downloadSession;
 }
 
-- (BOOL)allowsCellularAccess
+- (NSURLSession *)downloadSessionWifiOnly
 {
-    return _sessionConfiguration.allowsCellularAccess;
+    if (!_downloadSessionWifiOnly) {
+        NSURLSessionConfiguration *sessionConfiguration = [NSURLSessionConfiguration defaultSessionConfiguration];
+        sessionConfiguration.allowsCellularAccess = NO;
+        _downloadSessionWifiOnly = [NSURLSession sessionWithConfiguration:sessionConfiguration
+                                                                 delegate:self
+                                                            delegateQueue:nj_file_downloader_shared_delegate_queue()];
+    }
+    return _downloadSessionWifiOnly;
+}
+
+- (NSURLSession *)downloadSession
+{
+    if (_allowsCellularAccess) {
+        return [self downloadSessionAllNet];
+    } else {
+        return [self downloadSessionWifiOnly];
+    }
 }
 
 - (id<NJFileDownloaderTask>)downloadRequest:(NSURLRequest *)request toPath:(NSString *)resultPath completion:(void (^)(NSError *))completionHandler
@@ -148,7 +190,7 @@ typedef void (^NJFileResumeCancelHandler)(NSData *resumeData);
 {
     __block NSURLSessionDownloadTask *downloadTask = nil;
     url_session_manager_create_task_safely(^{
-        downloadTask = [_downloadSession downloadTaskWithRequest:request];
+        downloadTask = [[self downloadSession] downloadTaskWithRequest:request];
     });
    
     return [self runSessionTask:downloadTask toPath:resultPath progress:downloadProgressHandler completion:completionHandler];
@@ -162,7 +204,7 @@ typedef void (^NJFileResumeCancelHandler)(NSData *resumeData);
 {
     __block NSURLSessionDownloadTask *downloadTask = nil;
     url_session_manager_create_task_safely(^{
-        downloadTask = [_downloadSession downloadTaskWithResumeData:resumeData];
+        downloadTask = [[self downloadSession] downloadTaskWithResumeData:resumeData];
     });
     
     return [self runSessionTask:downloadTask toPath:resultPath progress:downloadProgressHandler completion:completionHandler];
@@ -192,7 +234,7 @@ typedef void (^NJFileResumeCancelHandler)(NSData *resumeData);
     };
     
     __weak typeof(self) weakSelf = self;
-    [_delegateQueue addOperationWithBlock:^{
+    [nj_file_downloader_shared_delegate_queue() addOperationWithBlock:^{
         __strong typeof(weakSelf) sself = weakSelf;
         if (sself) {
             [sself->_mapTable setObject:info forKey:downloadTask];
@@ -208,24 +250,20 @@ typedef void (^NJFileResumeCancelHandler)(NSData *resumeData);
 - (void)didDownloadFileForInfo:(NJFileDownloaderTask *)info fileURL:(NSURL *)location
 {
     info.downloadFileURL = location;
-    
-    // get file size
-    uint64_t fileSize = [[[NSFileManager defaultManager] attributesOfItemAtPath:[location path] error:nil] fileSize];
-    if (fileSize > 0) {
-        NSURL *resultUrl = [NSURL fileURLWithPath:info.resultPath];
-        [[NSFileManager defaultManager] removeItemAtURL:resultUrl error:NULL];
-        NSError *error = nil;
-        [[NSFileManager defaultManager] moveItemAtURL:info.downloadFileURL toURL:resultUrl error:&error];
-        info.error = error;
-    } else {
-        info.error = [NSError errorWithDomain:@"NJFileDownloaderError" code:0 userInfo:@{NSLocalizedDescriptionKey: @"Download a zero size file"}];
-    }
-    
     NSURL *resultUrl = [NSURL fileURLWithPath:info.resultPath];
     [[NSFileManager defaultManager] removeItemAtURL:resultUrl error:NULL];
     NSError *error = nil;
-    [[NSFileManager defaultManager] moveItemAtURL:info.downloadFileURL toURL:resultUrl error:&error];
+    [[NSFileManager defaultManager] moveItemAtURL:location toURL:resultUrl error:&error];
     info.error = error;
+    
+    // get file size
+    if (!error) {
+        uint64_t fileSize = [[[NSFileManager defaultManager] attributesOfItemAtPath:[resultUrl path] error:nil] fileSize];
+        if (fileSize == 0) {
+            info.error = [NSError errorWithDomain:@"NJFileDownloaderError" code:0 userInfo:@{NSLocalizedDescriptionKey: @"Download a zero size file"}];
+            [[NSFileManager defaultManager] removeItemAtURL:resultUrl error:NULL];
+        }
+    }
 }
 
 - (void)completeDownloadForRequestObject:(id)obj withError:(NSError *)error
