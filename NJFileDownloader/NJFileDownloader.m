@@ -119,6 +119,8 @@ typedef void (^NJFileResumeCancelHandler)(NSData *resumeData);
 
 @interface NJFileDownloader () <NSURLSessionDownloadDelegate>
 
+@property (nonatomic, strong) NSFileManager *fileManager;
+
 @end
 
 @implementation NJFileDownloader
@@ -179,6 +181,14 @@ typedef void (^NJFileResumeCancelHandler)(NSData *resumeData);
     } else {
         return [self downloadSessionWifiOnly];
     }
+}
+
+- (NSFileManager *)fileManager
+{
+    if (!_fileManager) {
+        _fileManager = [[NSFileManager alloc] init];
+    }
+    return _fileManager;
 }
 
 - (id<NJFileDownloaderTask>)downloadRequest:(NSURLRequest *)request toPath:(NSString *)resultPath completion:(void (^)(NSError *))completionHandler
@@ -251,17 +261,18 @@ typedef void (^NJFileResumeCancelHandler)(NSData *resumeData);
 {
     info.downloadFileURL = location;
     NSURL *resultUrl = [NSURL fileURLWithPath:info.resultPath];
-    [[NSFileManager defaultManager] removeItemAtURL:resultUrl error:NULL];
+    NSFileManager *fileManager = self.fileManager;
+    [fileManager removeItemAtURL:resultUrl error:NULL];
     NSError *error = nil;
-    [[NSFileManager defaultManager] moveItemAtURL:location toURL:resultUrl error:&error];
+    [fileManager moveItemAtURL:location toURL:resultUrl error:&error];
     info.error = error;
     
     // get file size
     if (!error) {
-        uint64_t fileSize = [[[NSFileManager defaultManager] attributesOfItemAtPath:[resultUrl path] error:nil] fileSize];
+        uint64_t fileSize = [[fileManager attributesOfItemAtPath:[resultUrl path] error:nil] fileSize];
         if (fileSize == 0) {
             info.error = [NSError errorWithDomain:@"NJFileDownloaderError" code:0 userInfo:@{NSLocalizedDescriptionKey: @"Download a zero size file"}];
-            [[NSFileManager defaultManager] removeItemAtURL:resultUrl error:NULL];
+            [fileManager removeItemAtURL:resultUrl error:NULL];
         }
     }
 }
