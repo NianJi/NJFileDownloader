@@ -8,35 +8,6 @@
 
 #import "NJFileDownloader.h"
 
-
-// learn from AFNetworking
-#ifndef NSFoundationVersionNumber_iOS_8_0
-#define NSFoundationVersionNumber_With_Fixed_5871104061079552_bug 1140.11
-#else
-#define NSFoundationVersionNumber_With_Fixed_5871104061079552_bug NSFoundationVersionNumber_iOS_8_0
-#endif
-
-static dispatch_queue_t url_session_manager_creation_queue() {
-    static dispatch_queue_t af_url_session_manager_creation_queue;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        af_url_session_manager_creation_queue = dispatch_queue_create("com.nianji.NJFileDownloader.sessionCreateQueue", DISPATCH_QUEUE_SERIAL);
-    });
-    
-    return af_url_session_manager_creation_queue;
-}
-
-static void url_session_manager_create_task_safely(dispatch_block_t block) {
-    if (NSFoundationVersionNumber < NSFoundationVersionNumber_With_Fixed_5871104061079552_bug) {
-        // Fix of bug
-        // Open Radar:http://openradar.appspot.com/radar?id=5871104061079552 (status: Fixed in iOS8)
-        // Issue about:https://github.com/AFNetworking/AFNetworking/issues/2093
-        dispatch_sync(url_session_manager_creation_queue(), block);
-    } else {
-        block();
-    }
-}
-
 static NSOperationQueue *nj_file_downloader_shared_delegate_queue()
 {
     static NSOperationQueue *_delegateQueue;
@@ -145,39 +116,28 @@ typedef void (^NJFileResumeCancelHandler)(NSData *resumeData);
     if (self) {
         _allowsCellularAccess = YES;
         _mapTable = [[NSMapTable alloc] initWithKeyOptions:NSPointerFunctionsStrongMemory valueOptions:NSPointerFunctionsStrongMemory capacity:1];
-    }
-    return self;
-}
-
-- (NSURLSession *)downloadSessionAllNet
-{
-    if (!_downloadSession) {
+        
+        NSOperationQueue *queue = nj_file_downloader_shared_delegate_queue();
         NSURLSessionConfiguration *sessionConfiguration = [NSURLSessionConfiguration defaultSessionConfiguration];
         _downloadSession = [NSURLSession sessionWithConfiguration:sessionConfiguration
                                                          delegate:self
-                                                    delegateQueue:nj_file_downloader_shared_delegate_queue()];
-    }
-    return _downloadSession;
-}
-
-- (NSURLSession *)downloadSessionWifiOnly
-{
-    if (!_downloadSessionWifiOnly) {
-        NSURLSessionConfiguration *sessionConfiguration = [NSURLSessionConfiguration defaultSessionConfiguration];
+                                                    delegateQueue:queue];
+        
+        NSURLSessionConfiguration *sessionConfiguration2 = [NSURLSessionConfiguration defaultSessionConfiguration];
         sessionConfiguration.allowsCellularAccess = NO;
-        _downloadSessionWifiOnly = [NSURLSession sessionWithConfiguration:sessionConfiguration
+        _downloadSessionWifiOnly = [NSURLSession sessionWithConfiguration:sessionConfiguration2
                                                                  delegate:self
-                                                            delegateQueue:nj_file_downloader_shared_delegate_queue()];
+                                                            delegateQueue:queue];
     }
-    return _downloadSessionWifiOnly;
+    return self;
 }
 
 - (NSURLSession *)downloadSession
 {
     if (_allowsCellularAccess) {
-        return [self downloadSessionAllNet];
+        return _downloadSession;
     } else {
-        return [self downloadSessionWifiOnly];
+        return _downloadSessionWifiOnly;
     }
 }
 
@@ -188,11 +148,7 @@ typedef void (^NJFileResumeCancelHandler)(NSData *resumeData);
 
 - (id<NJFileDownloaderTask>)downloadRequest:(NSURLRequest *)request toPath:(NSString *)resultPath progress:(void (^)(id<NJFileDownloaderTask>))downloadProgressHandler completion:(void (^)(NSError *))completionHandler
 {
-    __block NSURLSessionDownloadTask *downloadTask = nil;
-    url_session_manager_create_task_safely(^{
-        downloadTask = [[self downloadSession] downloadTaskWithRequest:request];
-    });
-   
+    NSURLSessionDownloadTask *downloadTask = [[self downloadSession] downloadTaskWithRequest:request];
     return [self runSessionTask:downloadTask toPath:resultPath progress:downloadProgressHandler completion:completionHandler];
 }
 
@@ -202,11 +158,7 @@ typedef void (^NJFileResumeCancelHandler)(NSData *resumeData);
                                           progress:(void (^)(id<NJFileDownloaderTask> downloadTask))downloadProgressHandler
                                         completion:(void(^)(NSError *error))completionHandler
 {
-    __block NSURLSessionDownloadTask *downloadTask = nil;
-    url_session_manager_create_task_safely(^{
-        downloadTask = [[self downloadSession] downloadTaskWithResumeData:resumeData];
-    });
-    
+    NSURLSessionDownloadTask *downloadTask = [[self downloadSession] downloadTaskWithResumeData:resumeData];
     return [self runSessionTask:downloadTask toPath:resultPath progress:downloadProgressHandler completion:completionHandler];
 }
 
